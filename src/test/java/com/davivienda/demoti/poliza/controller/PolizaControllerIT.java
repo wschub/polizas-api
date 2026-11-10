@@ -1,12 +1,18 @@
 package com.davivienda.demoti.poliza.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.davivienda.demoti.TestcontainersConfiguration;
 import com.davivienda.demoti.core.CoreGateway;
 import com.davivienda.demoti.poliza.domain.EstadoPoliza;
+import com.davivienda.demoti.poliza.domain.EstadoRiesgo;
 import com.davivienda.demoti.poliza.domain.Poliza;
 import com.davivienda.demoti.poliza.domain.TipoPoliza;
 import com.davivienda.demoti.poliza.repository.PolizaRepository;
@@ -23,10 +29,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** CU1-a..e y CU2-a..b. */
+/** CU1-a..e, CU2-a..b, CU3-a..g y CU4-a..c. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -260,5 +267,303 @@ class PolizaControllerIT {
 				.perform(get("/polizas/abc/riesgos").header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.status").value(400));
+	}
+
+	// ------------------------------------------------------------------
+	// CU3: renovar
+	// ------------------------------------------------------------------
+
+	@Test
+	@DisplayName("CU3-a: renovar con el IPC por defecto recalcula canon y prima, corre la vigencia y deja RENOVADA")
+	void renuevaConIpcPorDefecto() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(idIndividualVigente))
+				.andExpect(jsonPath("$.estado").value("RENOVADA"))
+				// polizas.ipc=5.2 -> 1000.00 x 1.052 = 1052.00
+				.andExpect(jsonPath("$.canonMensual").value(1052.00))
+				// 1052.00 x 12 meses
+				.andExpect(jsonPath("$.prima").value(12624.00))
+				// la nueva vigencia arranca donde terminaba la anterior
+				.andExpect(jsonPath("$.fechaInicioVigencia").value("2027-01-01"))
+				.andExpect(jsonPath("$.fechaFinVigencia").value("2028-01-01"));
+
+		verify(coreGateway, times(1)).notificarActualizacion(idIndividualVigente);
+	}
+
+	@Test
+	@DisplayName("CU3-a: el cambio queda persistido en la base")
+	void renovarPersisteElCambio() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isOk());
+
+		Poliza enBase = polizaRepository.findById(idIndividualVigente).orElseThrow();
+		assertThat(enBase.getEstado()).isEqualTo(EstadoPoliza.RENOVADA);
+		assertThat(enBase.getCanonMensual()).isEqualByComparingTo("1052.00");
+		assertThat(enBase.getPrima()).isEqualByComparingTo("12624.00");
+		assertThat(enBase.getFechaInicioVigencia()).isEqualTo(LocalDate.of(2027, 1, 1));
+		assertThat(enBase.getFechaFinVigencia()).isEqualTo(LocalDate.of(2028, 1, 1));
+	}
+
+	@Test
+	@DisplayName("CU3-b: el ipc del body sobrescribe el valor por defecto")
+	void renuevaConIpcDelBody() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"ipc\":10}"))
+				.andExpect(status().isOk())
+				// con 10 del body: 1000.00 x 1.10 = 1100.00, no 1052.00
+				.andExpect(jsonPath("$.canonMensual").value(1100.00))
+				.andExpect(jsonPath("$.prima").value(13200.00))
+				.andExpect(jsonPath("$.estado").value("RENOVADA"));
+	}
+
+	@Test
+	@DisplayName("CU3-b: un body sin el campo ipc usa el valor por defecto")
+	void renuevaConBodyVacio() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.canonMensual").value(1052.00));
+	}
+
+	@Test
+	@DisplayName("CU3-c: renovar una poliza CANCELADA responde 409 y no notifica al CORE")
+	void noRenuevaPolizaCancelada() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idColectivaCancelada)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.status").value(409))
+				.andExpect(jsonPath("$.title").value("Regla de negocio violada"))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("CANCELADA")));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU3-d / R4: renovar dos veces aplica el segundo incremento sobre el canon ya renovado")
+	void renuevaDosVecesSeguidas() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.canonMensual").value(1052.00));
+
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isOk())
+				// 1052.00 x 1.052 = 1106.704 -> 1106.70, no 1104.00 (que seria 2 x 5.2 % del original)
+				.andExpect(jsonPath("$.canonMensual").value(1106.70))
+				.andExpect(jsonPath("$.prima").value(13280.40))
+				// la vigencia se corre otro periodo
+				.andExpect(jsonPath("$.fechaInicioVigencia").value("2028-01-01"))
+				.andExpect(jsonPath("$.fechaFinVigencia").value("2029-01-01"))
+				.andExpect(jsonPath("$.estado").value("RENOVADA"));
+
+		verify(coreGateway, times(2)).notificarActualizacion(idIndividualVigente);
+	}
+
+	@Test
+	@DisplayName("CU3-e: el redondeo es a escala 2 con HALF_UP")
+	void renuevaRedondeandoHalfUp() throws Exception {
+		// 10.10 x 1.05 = 10.605 exacto: HALF_UP da 10.61 y HALF_EVEN daria 10.60
+		Poliza centavos =
+				new Poliza(
+						"POL-CENT-001",
+						TipoPoliza.COLECTIVA,
+						"Pruebas SAS",
+						INICIO,
+						12,
+						new BigDecimal("10.10"),
+						"Calle 1 # 1-1",
+						"Arrendatario",
+						"Arrendador");
+		Long id = polizaRepository.save(centavos).getId();
+
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", id)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"ipc\":5.0}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.canonMensual").value(10.61))
+				.andExpect(jsonPath("$.prima").value(127.32));
+	}
+
+	@Test
+	@DisplayName("CU3-f: un ipc negativo responde 400")
+	void rechazaIpcNegativo() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"ipc\":-1}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.status").value(400))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("ipc")));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU3-f: un ipc mayor que 100 responde 400")
+	void rechazaIpcMayorQueCien() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"ipc\":100.01}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.status").value(400));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU3-f: los extremos 0 y 100 si son validos")
+	void aceptaLosExtremosDelRango() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"ipc\":0}"))
+				.andExpect(status().isOk())
+				// con ipc 0 el canon no cambia, pero la vigencia si se corre
+				.andExpect(jsonPath("$.canonMensual").value(1000.00))
+				.andExpect(jsonPath("$.estado").value("RENOVADA"));
+
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"ipc\":100}"))
+				.andExpect(status().isOk())
+				// 2000.00 x 2 = 4000.00
+				.andExpect(jsonPath("$.canonMensual").value(4000.00));
+	}
+
+	@Test
+	@DisplayName("CU3-f: un JSON malformado responde 400")
+	void rechazaJsonMalformado() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/renovar", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"ipc\": }"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.status").value(400));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU3-g: renovar una poliza inexistente responde 404 y no notifica al CORE")
+	void noRenuevaPolizaInexistente() throws Exception {
+		mockMvc
+				.perform(post("/polizas/999999/renovar").header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("999999")));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	// ------------------------------------------------------------------
+	// CU4: cancelar
+	// ------------------------------------------------------------------
+
+	@Test
+	@DisplayName("CU4-a: cancelar deja la poliza CANCELADA y notifica al CORE una vez")
+	void cancelaPoliza() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/cancelar", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(idColectivaVigente))
+				.andExpect(jsonPath("$.estado").value("CANCELADA"));
+
+		verify(coreGateway, times(1)).notificarActualizacion(idColectivaVigente);
+	}
+
+	@Test
+	@DisplayName("CU4-a: cancelar persiste los 3 riesgos de la poliza como CANCELADO")
+	void cancelarPersisteLosRiesgosComoCancelados() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/cancelar", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isOk());
+
+		// se lee de la base, no de la respuesta
+		assertThat(polizaRepository.findById(idColectivaVigente).orElseThrow().getEstado())
+				.isEqualTo(EstadoPoliza.CANCELADA);
+		assertThat(riesgoRepository.findByPolizaId(idColectivaVigente))
+				.hasSize(3)
+				.allMatch(riesgo -> riesgo.getEstado() == EstadoRiesgo.CANCELADO);
+	}
+
+	@Test
+	@DisplayName("CU4-a: cancelar no toca los riesgos de otras polizas")
+	void cancelarNoAfectaOtrasPolizas() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/cancelar", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isOk());
+
+		assertThat(riesgoRepository.findByPolizaId(idIndividualVigente))
+				.allMatch(riesgo -> riesgo.getEstado() == EstadoRiesgo.ACTIVO);
+		assertThat(polizaRepository.findById(idIndividualVigente).orElseThrow().getEstado())
+				.isEqualTo(EstadoPoliza.VIGENTE);
+	}
+
+	@Test
+	@DisplayName("CU4-b: cancelar una poliza ya CANCELADA responde 409 y no notifica al CORE")
+	void noCancelaPolizaYaCancelada() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/cancelar", idColectivaCancelada)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.status").value(409))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("CANCELADA")));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU4-c: cancelar una poliza inexistente responde 404 y no notifica al CORE")
+	void noCancelaPolizaInexistente() throws Exception {
+		mockMvc
+				.perform(post("/polizas/999999/cancelar").header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404));
+
+		verifyNoInteractions(coreGateway);
 	}
 }
