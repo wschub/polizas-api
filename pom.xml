@@ -111,6 +111,23 @@
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!--
+						Surefire por defecto solo toma *Test, Test* y *Tests; el sufijo *IT
+						es el de Failsafe. La estrategia de pruebas del proyecto nombra los
+						tests de integracion *IT y los corre con `mvn test`, asi que hay que
+						incluirlos explicitamente o nunca se ejecutarian.
+					-->
+					<includes>
+						<include>**/*Test.java</include>
+						<include>**/*Tests.java</include>
+						<include>**/*IT.java</include>
+					</includes>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<executions>
 					<execution>
