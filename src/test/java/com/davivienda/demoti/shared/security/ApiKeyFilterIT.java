@@ -16,7 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** CU7-a y CU7-b. CU7-c se completa en PolizaControllerIT, cuando existe GET /polizas. */
+/** CU7-a, CU7-b y CU7-c. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -62,6 +62,15 @@ class ApiKeyFilterIT {
 		mockMvc
 				.perform(get("/polizas").header(ApiKeyFilter.HEADER_API_KEY, ""))
 				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	@DisplayName("CU7-c: con la api key correcta la peticion pasa el filtro y responde 200")
+	void permitePeticionConApiKeyCorrecta() throws Exception {
+		mockMvc
+				.perform(get("/polizas").header(ApiKeyFilter.HEADER_API_KEY, "123456"))
+				.andExpect(status().isOk())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
 	}
 
 	@Test

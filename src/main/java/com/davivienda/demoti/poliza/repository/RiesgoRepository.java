@@ -9,10 +9,15 @@ import org.springframework.data.repository.query.Param;
 public interface RiesgoRepository extends JpaRepository<Riesgo, Long> {
 
 	/**
-	 * Riesgos de una poliza. Lleva {@code @Query} en lugar de quedarse con la
-	 * consulta derivada del nombre solo para fijar el orden por id, y que las
-	 * respuestas de la API sean deterministas.
+	 * Riesgos de una poliza, ordenados por id para que la respuesta no dependa del
+	 * orden de insercion.
+	 *
+	 * <p>El {@code join fetch} trae la poliza en la misma consulta: con
+	 * {@code open-in-view=false} el mapeo a DTO ocurre dentro del service y
+	 * {@code RiesgoResponse} necesita el id de la poliza. Sin el fetch, la relacion
+	 * lazy se resolveria por cada riesgo (N+1); con el, es una sola consulta y
+	 * todos los riesgos comparten la misma poliza ya cargada.
 	 */
-	@Query("select r from Riesgo r where r.poliza.id = :polizaId order by r.id")
+	@Query("select r from Riesgo r join fetch r.poliza where r.poliza.id = :polizaId order by r.id")
 	List<Riesgo> findByPolizaId(@Param("polizaId") Long polizaId);
 }
