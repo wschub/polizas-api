@@ -33,7 +33,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** CU1-a..e, CU2-a..b, CU3-a..g y CU4-a..c. */
+/** CU1-a..e, CU2-a..b, CU3-a..g, CU4-a..c y CU5-a..e. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -563,6 +563,168 @@ class PolizaControllerIT {
 				.perform(post("/polizas/999999/cancelar").header(ApiKeyFilter.HEADER_API_KEY, API_KEY))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.status").value(404));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	// ------------------------------------------------------------------
+	// CU5: agregar riesgo (el endpoint cuelga de /polizas)
+	// ------------------------------------------------------------------
+
+	private static final String BODY_RIESGO =
+			"""
+			{"direccionInmueble":"Calle 85 # 12-30","arrendatario":"Pedro Alvarez",			"arrendador":"Inmobiliaria Andina SAS"}""";
+
+	@Test
+	@DisplayName("CU5-a: agregar un riesgo a una colectiva responde 201 con el id ya generado")
+	void agregaRiesgoAColectiva() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content(BODY_RIESGO))
+				.andExpect(status().isCreated())
+				// el id debe venir poblado, no null
+				.andExpect(jsonPath("$.id").isNumber())
+				.andExpect(jsonPath("$.polizaId").value(idColectivaVigente))
+				.andExpect(jsonPath("$.estado").value("ACTIVO"))
+				.andExpect(jsonPath("$.direccionInmueble").value("Calle 85 # 12-30"))
+				.andExpect(jsonPath("$.arrendatario").value("Pedro Alvarez"))
+				.andExpect(jsonPath("$.arrendador").value("Inmobiliaria Andina SAS"));
+
+		verify(coreGateway, times(1)).notificarActualizacion(idColectivaVigente);
+	}
+
+	@Test
+	@DisplayName("CU5-a: el riesgo queda en BD, ACTIVO y asociado a la poliza correcta")
+	void agregarRiesgoPersisteEnBase() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content(BODY_RIESGO))
+				.andExpect(status().isCreated());
+
+		// la colectiva tenia 3 riesgos; ahora 4, y el nuevo es el ultimo por id
+		var riesgos = riesgoRepository.findByPolizaId(idColectivaVigente);
+		assertThat(riesgos).hasSize(4);
+		var nuevo = riesgos.getLast();
+		assertThat(nuevo.getId()).isNotNull();
+		assertThat(nuevo.getEstado()).isEqualTo(EstadoRiesgo.ACTIVO);
+		assertThat(nuevo.getPoliza().getId()).isEqualTo(idColectivaVigente);
+		assertThat(nuevo.getDireccionInmueble()).isEqualTo("Calle 85 # 12-30");
+	}
+
+	@Test
+	@DisplayName("CU5-b: agregar un riesgo a una INDIVIDUAL responde 409 y no crea nada en BD")
+	void noAgregaRiesgoAIndividual() throws Exception {
+		long antes = riesgoRepository.count();
+
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idIndividualVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content(BODY_RIESGO))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.status").value(409))
+				.andExpect(jsonPath("$.title").value("Regla de negocio violada"))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("COLECTIVA")));
+
+		assertThat(riesgoRepository.count()).isEqualTo(antes);
+		assertThat(riesgoRepository.findByPolizaId(idIndividualVigente)).hasSize(1);
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU5-c: agregar un riesgo a una poliza CANCELADA responde 409 y no crea nada en BD")
+	void noAgregaRiesgoAPolizaCancelada() throws Exception {
+		long antes = riesgoRepository.count();
+
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idColectivaCancelada)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content(BODY_RIESGO))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("CANCELADA")));
+
+		assertThat(riesgoRepository.count()).isEqualTo(antes);
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU5-d: un campo vacio responde 400 nombrando el campo")
+	void rechazaCampoVacio() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content(
+										"{\"direccionInmueble\":\"   \",\"arrendatario\":\"Pedro\",\"arrendador\":\"Andina\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.status").value(400))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("direccionInmueble")));
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU5-d: si faltan los tres campos, el 400 los nombra todos")
+	void rechazaBodyVacio() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("direccionInmueble")))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("arrendatario")))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("arrendador")));
+	}
+
+	@Test
+	@DisplayName("CU5-d: sin body responde 400, porque aqui el body es obligatorio")
+	void rechazaPeticionSinBody() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON))
+				.andExpect(status().isBadRequest());
+
+		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU5-d: un JSON malformado responde 400")
+	void rechazaJsonMalformadoAlCrearRiesgo() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/{id}/riesgos", idColectivaVigente)
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("{\"direccionInmueble\":}"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@DisplayName("CU5-e: agregar un riesgo a una poliza inexistente responde 404")
+	void noAgregaRiesgoAPolizaInexistente() throws Exception {
+		mockMvc
+				.perform(
+						post("/polizas/999999/riesgos")
+								.header(ApiKeyFilter.HEADER_API_KEY, API_KEY)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content(BODY_RIESGO))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.detail").value(Matchers.containsString("999999")));
 
 		verifyNoInteractions(coreGateway);
 	}

@@ -2,6 +2,7 @@ package com.davivienda.demoti.poliza.repository;
 
 import com.davivienda.demoti.poliza.domain.Riesgo;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,4 +21,15 @@ public interface RiesgoRepository extends JpaRepository<Riesgo, Long> {
 	 */
 	@Query("select r from Riesgo r join fetch r.poliza where r.poliza.id = :polizaId order by r.id")
 	List<Riesgo> findByPolizaId(@Param("polizaId") Long polizaId);
+
+	/**
+	 * Un riesgo junto con su poliza, en una sola consulta.
+	 *
+	 * <p>Cancelar un riesgo necesita el id de su poliza para notificar al CORE, y
+	 * {@code RiesgoResponse} tambien lo expone. El {@code join fetch} evita que se
+	 * resuelva el proxy lazy con una segunda consulta. Es un ManyToOne, asi que
+	 * devuelve una sola fila y el Optional es seguro.
+	 */
+	@Query("select r from Riesgo r join fetch r.poliza where r.id = :id")
+	Optional<Riesgo> findByIdConPoliza(@Param("id") Long id);
 }
