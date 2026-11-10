@@ -1,4 +1,7 @@
 package com.davivienda.demoti.poliza.domain;
 
-public class EstadoPoliza {
+public enum EstadoPoliza {
+	VIGENTE,
+	RENOVADA,
+	CANCELADA
 }

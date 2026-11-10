@@ -1,4 +1,6 @@
 package com.davivienda.demoti.poliza.domain;
 
-public class EstadoRiesgo {
+public enum EstadoRiesgo {
+	ACTIVO,
+	CANCELADO
 }
