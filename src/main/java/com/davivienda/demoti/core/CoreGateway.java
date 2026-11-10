@@ -1,0 +1,4 @@
+package com.davivienda.demoti.core;
+
+public class CoreGateway {
+}
