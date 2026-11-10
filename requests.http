@@ -1,0 +1,298 @@
+###############################################################################
+# API de Gestion de Polizas - coleccion de peticiones
+#
+# Compatible con el cliente HTTP de IntelliJ IDEA y con la extension
+# REST Client de VS Code.
+#
+# Antes de empezar:
+#   docker compose up --build -d
+#
+# El archivo esta ordenado para poder ejecutarse de arriba a abajo sobre los
+# datos semilla recien creados. Si ya ejecutaste algunas peticiones, reinicia
+# el estado con:
+#   docker compose down -v && docker compose up --build -d
+#
+# Datos semilla:
+#   poliza 1  POL-IND-001  INDIVIDUAL  VIGENTE    riesgo 1 (ACTIVO)
+#   poliza 2  POL-COL-001  COLECTIVA   VIGENTE    riesgos 2, 3, 4 (ACTIVO)
+#   poliza 3  POL-COL-002  COLECTIVA   CANCELADA  riesgo 5 (CANCELADO)
+###############################################################################
+
+@host = http://localhost:8080
+@apiKey = 123456
+
+
+###############################################################################
+# 1. GET /polizas - listar polizas (CU1)
+###############################################################################
+
+### 1.1 Sin filtros -> 200, las 3 polizas
+GET {{host}}/polizas
+x-api-key: {{apiKey}}
+
+### 1.2 Filtrando por tipo -> 200, las 2 colectivas
+GET {{host}}/polizas?tipo=COLECTIVA
+x-api-key: {{apiKey}}
+
+### 1.3 Filtrando por estado -> 200, las 2 vigentes
+GET {{host}}/polizas?estado=VIGENTE
+x-api-key: {{apiKey}}
+
+### 1.4 Combinando ambos filtros -> 200, solo la poliza 3
+GET {{host}}/polizas?tipo=COLECTIVA&estado=CANCELADA
+x-api-key: {{apiKey}}
+
+### 1.5 ERROR 400 - tipo con un valor que no existe en el enum
+GET {{host}}/polizas?tipo=NO_EXISTE
+x-api-key: {{apiKey}}
+
+### 1.6 ERROR 400 - estado con un valor que no existe en el enum
+GET {{host}}/polizas?estado=VENCIDA
+x-api-key: {{apiKey}}
+
+
+###############################################################################
+# 2. GET /polizas/{id}/riesgos - riesgos de una poliza (CU2)
+###############################################################################
+
+### 2.1 Poliza individual -> 200, 1 riesgo ACTIVO
+GET {{host}}/polizas/1/riesgos
+x-api-key: {{apiKey}}
+
+### 2.2 Poliza colectiva -> 200, 3 riesgos ACTIVO
+GET {{host}}/polizas/2/riesgos
+x-api-key: {{apiKey}}
+
+### 2.3 Poliza cancelada -> 200, su riesgo sale CANCELADO
+GET {{host}}/polizas/3/riesgos
+x-api-key: {{apiKey}}
+
+### 2.4 ERROR 404 - la poliza no existe
+GET {{host}}/polizas/999999/riesgos
+x-api-key: {{apiKey}}
+
+### 2.5 ERROR 400 - el id no es numerico
+GET {{host}}/polizas/abc/riesgos
+x-api-key: {{apiKey}}
+
+
+###############################################################################
+# 3. POST /polizas/{id}/renovar - renovar (CU3)
+###############################################################################
+
+### 3.1 Sin body -> 200, aplica el IPC por defecto (polizas.ipc = 5.2)
+#   1800000.00 x 1.052 = 1893600.00 | prima 22723200.00 | vigencia 2027 -> 2028
+POST {{host}}/polizas/1/renovar
+x-api-key: {{apiKey}}
+
+### 3.2 Con ipc en el body -> 200, el del body manda
+#   el incremento se aplica sobre el canon YA renovado en 3.1
+POST {{host}}/polizas/1/renovar
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "ipc": 6.1
+}
+
+### 3.3 Body sin el campo ipc -> 200, vuelve al IPC por defecto
+POST {{host}}/polizas/1/renovar
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{}
+
+### 3.4 ERROR 400 - ipc negativo (fuera del rango 0..100)
+POST {{host}}/polizas/1/renovar
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "ipc": -1
+}
+
+### 3.5 ERROR 400 - ipc mayor que 100
+POST {{host}}/polizas/1/renovar
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "ipc": 100.01
+}
+
+### 3.6 ERROR 400 - el body no es JSON valido
+POST {{host}}/polizas/1/renovar
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{"ipc": }
+
+### 3.7 ERROR 409 - no se puede renovar una poliza CANCELADA (R3)
+POST {{host}}/polizas/3/renovar
+x-api-key: {{apiKey}}
+
+### 3.8 ERROR 404 - la poliza no existe
+POST {{host}}/polizas/999999/renovar
+x-api-key: {{apiKey}}
+
+
+###############################################################################
+# 4. POST /polizas/{id}/riesgos - agregar riesgo (CU5)
+###############################################################################
+
+### 4.1 A una poliza COLECTIVA vigente -> 201, riesgo ACTIVO con su id
+POST {{host}}/polizas/2/riesgos
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "direccionInmueble": "Transversal 12 # 50-60, Cali",
+  "arrendatario": "Sofia Pena",
+  "arrendador": "Inmobiliaria Andina SAS"
+}
+
+### 4.2 ERROR 409 - una poliza INDIVIDUAL no admite riesgos adicionales (R1)
+POST {{host}}/polizas/1/riesgos
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "direccionInmueble": "Transversal 12 # 50-60, Cali",
+  "arrendatario": "Sofia Pena",
+  "arrendador": "Ana Gomez"
+}
+
+### 4.3 ERROR 409 - no se agregan riesgos a una poliza CANCELADA (R2)
+POST {{host}}/polizas/3/riesgos
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "direccionInmueble": "Transversal 12 # 50-60, Cali",
+  "arrendatario": "Sofia Pena",
+  "arrendador": "Arriendos del Norte Ltda"
+}
+
+### 4.4 ERROR 400 - faltan los tres campos obligatorios
+POST {{host}}/polizas/2/riesgos
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{}
+
+### 4.5 ERROR 400 - un campo en blanco
+POST {{host}}/polizas/2/riesgos
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "direccionInmueble": "   ",
+  "arrendatario": "Sofia Pena",
+  "arrendador": "Inmobiliaria Andina SAS"
+}
+
+### 4.6 ERROR 404 - la poliza no existe
+POST {{host}}/polizas/999999/riesgos
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "direccionInmueble": "Transversal 12 # 50-60, Cali",
+  "arrendatario": "Sofia Pena",
+  "arrendador": "Inmobiliaria Andina SAS"
+}
+
+
+###############################################################################
+# 5. POST /riesgos/{id}/cancelar - cancelar riesgo (CU6)
+###############################################################################
+
+### 5.1 Cancelar un riesgo -> 200, CANCELADO. La poliza NO cambia de estado (R8)
+POST {{host}}/riesgos/2/cancelar
+x-api-key: {{apiKey}}
+
+### 5.2 Comprobar R8: la poliza 2 sigue VIGENTE
+GET {{host}}/polizas?estado=VIGENTE
+x-api-key: {{apiKey}}
+
+### 5.3 ERROR 409 - el riesgo ya estaba CANCELADO (R7)
+POST {{host}}/riesgos/2/cancelar
+x-api-key: {{apiKey}}
+
+### 5.4 ERROR 404 - el riesgo no existe
+POST {{host}}/riesgos/999999/cancelar
+x-api-key: {{apiKey}}
+
+
+###############################################################################
+# 6. POST /polizas/{id}/cancelar - cancelar poliza (CU4)
+#    Va al final porque cancela la poliza 2, que las secciones previas usan.
+###############################################################################
+
+### 6.1 Cancelar -> 200. Arrastra todos sus riesgos ACTIVO a CANCELADO (R5)
+POST {{host}}/polizas/2/cancelar
+x-api-key: {{apiKey}}
+
+### 6.2 Comprobar: todos los riesgos de la poliza 2 quedaron CANCELADO
+GET {{host}}/polizas/2/riesgos
+x-api-key: {{apiKey}}
+
+### 6.3 ERROR 409 - la poliza ya estaba CANCELADA (R6)
+POST {{host}}/polizas/2/cancelar
+x-api-key: {{apiKey}}
+
+### 6.4 ERROR 404 - la poliza no existe
+POST {{host}}/polizas/999999/cancelar
+x-api-key: {{apiKey}}
+
+
+###############################################################################
+# 7. POST /core-mock/evento - mock del CORE (CU8)
+###############################################################################
+
+### 7.1 Body valido -> 202 con {"recibido": true}
+#   Deja la linea [CORE-MOCK] en docker compose logs app
+POST {{host}}/core-mock/evento
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "evento": "ACTUALIZACION",
+  "polizaId": 555
+}
+
+### 7.2 ERROR 400 - falta el campo evento
+POST {{host}}/core-mock/evento
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "polizaId": 555
+}
+
+### 7.3 ERROR 400 - falta polizaId
+POST {{host}}/core-mock/evento
+x-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "evento": "ACTUALIZACION"
+}
+
+
+###############################################################################
+# 8. Seguridad (CU7)
+###############################################################################
+
+### 8.1 ERROR 401 - sin el header x-api-key
+GET {{host}}/polizas
+
+### 8.2 ERROR 401 - con una api key incorrecta
+GET {{host}}/polizas
+x-api-key: clave-equivocada
+
+### 8.3 /actuator/health es la unica ruta exenta -> 200 sin api key
+GET {{host}}/actuator/health
+
+### 8.4 El resto de /actuator si exige api key -> 401
+GET {{host}}/actuator
