@@ -1,0 +1,1350 @@
+{
+  "info": {
+    "name": "Demo TI - API de Gestion de Polizas",
+    "description": "Colección para probar los endpoints en orden. Ejecutar de arriba hacia abajo con datos semilla recién creados (docker compose down -v && docker compose up --build -d). Cada petición lleva su test de código HTTP.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth (x-api-key)",
+      "description": "Las tres primeras comprueban el filtro de seguridad; el resto de la colección envía x-api-key: {{apiKey}}.",
+      "item": [
+        {
+          "name": "1. Auth - sin API key (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/polizas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ]
+            },
+            "description": "Sin el header x-api-key la API responde 401 con ProblemDetail."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Auth - API key incorrecta (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "clave-incorrecta",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ]
+            },
+            "description": "Header presente pero con valor distinto de 123456."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Auth - API key correcta (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ]
+            },
+            "description": "Con x-api-key: 123456 la petición pasa el filtro."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Health check publico (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Único endpoint que no exige API key."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Consultas",
+      "description": "",
+      "item": [
+        {
+          "name": "5. Listar polizas - sin filtros (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Devuelve un arreglo\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "6. Listar polizas - tipo=COLECTIVA (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Todas son COLECTIVA\", function () { pm.response.json().forEach(function (p) { pm.expect(p.tipo).to.eql(\"COLECTIVA\"); }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas?tipo=COLECTIVA",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "COLECTIVA"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "7. Listar polizas - estado=VIGENTE (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Todas son VIGENTE\", function () { pm.response.json().forEach(function (p) { pm.expect(p.estado).to.eql(\"VIGENTE\"); }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas?estado=VIGENTE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "VIGENTE"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "8. Listar polizas - tipo y estado combinados (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas?tipo=COLECTIVA&estado=CANCELADA",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "COLECTIVA"
+                },
+                {
+                  "key": "estado",
+                  "value": "CANCELADA"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "9. Listar polizas - tipo invalido (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas?tipo=NO_EXISTE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas"
+              ],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "NO_EXISTE"
+                }
+              ]
+            },
+            "description": "Valor fuera del enum TipoPoliza."
+          },
+          "response": []
+        },
+        {
+          "name": "10. Listar riesgos - poliza individual (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaIndividualId}}/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaIndividualId}}",
+                "riesgos"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "11. Listar riesgos - poliza colectiva (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaColectivaId}}/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaColectivaId}}",
+                "riesgos"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "12. Listar riesgos - poliza inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/999999/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "999999",
+                "riesgos"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Renovar poliza",
+      "description": "",
+      "item": [
+        {
+          "name": "13. Renovar poliza - IPC por defecto, sin body (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Estado RENOVADA\", function () { pm.expect(pm.response.json().estado).to.eql(\"RENOVADA\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaIndividualId}}/renovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaIndividualId}}",
+                "renovar"
+              ]
+            },
+            "description": "Usa polizas.ipc=5.2. Estado pasa a RENOVADA; canon y prima suben; la vigencia se corre un periodo."
+          },
+          "response": []
+        },
+        {
+          "name": "14. Renovar poliza - IPC en el body (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaIndividualId}}/renovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaIndividualId}}",
+                "renovar"
+              ]
+            },
+            "description": "Sobrescribe el IPC por defecto. Renovar una póliza RENOVADA está permitido (R4).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ipc\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "15. Renovar poliza - IPC fuera de rango (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaIndividualId}}/renovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaIndividualId}}",
+                "renovar"
+              ]
+            },
+            "description": "El IPC debe estar entre 0 y 100.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ipc\": 150\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "16. Renovar poliza cancelada (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaCanceladaId}}/renovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaCanceladaId}}",
+                "renovar"
+              ]
+            },
+            "description": "R3: no se puede renovar una póliza cancelada. No se notifica al CORE."
+          },
+          "response": []
+        },
+        {
+          "name": "17. Renovar poliza inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/999999/renovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "999999",
+                "renovar"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Riesgos",
+      "description": "",
+      "item": [
+        {
+          "name": "18. Agregar riesgo a poliza colectiva (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Riesgo ACTIVO con id\", function () { var j = pm.response.json(); pm.expect(j.id).to.be.a(\"number\"); pm.expect(j.estado).to.eql(\"ACTIVO\"); pm.collectionVariables.set(\"riesgoNuevoId\", j.id); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaColectivaId}}/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaColectivaId}}",
+                "riesgos"
+              ]
+            },
+            "description": "Guarda el id del riesgo creado en la variable riesgoNuevoId para el paso de cancelación.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionInmueble\": \"Carrera 43A # 1-50, Medellin\",\n  \"arrendatario\": \"Ana Gomez\",\n  \"arrendador\": \"Inmobiliaria Andina\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "19. Agregar riesgo a poliza individual (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaIndividualId}}/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaIndividualId}}",
+                "riesgos"
+              ]
+            },
+            "description": "R1: una póliza individual no admite riesgos adicionales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionInmueble\": \"Calle 10 # 5-20\",\n  \"arrendatario\": \"Luis Perez\",\n  \"arrendador\": \"Maria Ruiz\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "20. Agregar riesgo a poliza cancelada (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaCanceladaId}}/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaCanceladaId}}",
+                "riesgos"
+              ]
+            },
+            "description": "R2: no se agregan riesgos a una póliza cancelada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionInmueble\": \"Calle 10 # 5-20\",\n  \"arrendatario\": \"Luis Perez\",\n  \"arrendador\": \"Maria Ruiz\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "21. Agregar riesgo - campos vacios (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaColectivaId}}/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaColectivaId}}",
+                "riesgos"
+              ]
+            },
+            "description": "Los tres campos son obligatorios.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "22. Agregar riesgo a poliza inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/999999/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "999999",
+                "riesgos"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionInmueble\": \"Calle 10 # 5-20\",\n  \"arrendatario\": \"Luis Perez\",\n  \"arrendador\": \"Maria Ruiz\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "23. Cancelar riesgo recien creado (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Riesgo CANCELADO\", function () { pm.expect(pm.response.json().estado).to.eql(\"CANCELADO\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/riesgos/{{riesgoNuevoId}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riesgos",
+                "{{riesgoNuevoId}}",
+                "cancelar"
+              ]
+            },
+            "description": "Cancela el riesgo del paso anterior. La póliza NO cambia de estado (R8)."
+          },
+          "response": []
+        },
+        {
+          "name": "24. Cancelar riesgo ya cancelado (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/riesgos/{{riesgoNuevoId}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riesgos",
+                "{{riesgoNuevoId}}",
+                "cancelar"
+              ]
+            },
+            "description": "R7."
+          },
+          "response": []
+        },
+        {
+          "name": "25. Cancelar riesgo inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/riesgos/999999/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riesgos",
+                "999999",
+                "cancelar"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CORE mock",
+      "description": "",
+      "item": [
+        {
+          "name": "26. Core mock - evento valido (202)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 202\", function () { pm.response.to.have.status(202); });",
+                  "pm.test(\"recibido=true\", function () { pm.expect(pm.response.json().recibido).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/core-mock/evento",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core-mock",
+                "evento"
+              ]
+            },
+            "description": "Revisa en los logs de la app la línea [CORE-MOCK].",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"evento\": \"ACTUALIZACION\",\n  \"polizaId\": 555\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "27. Core mock - body invalido (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/core-mock/evento",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core-mock",
+                "evento"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"evento\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cancelar poliza (al final)",
+      "description": "",
+      "item": [
+        {
+          "name": "28. Cancelar poliza colectiva y sus riesgos (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Estado CANCELADA\", function () { pm.expect(pm.response.json().estado).to.eql(\"CANCELADA\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaColectivaId}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaColectivaId}}",
+                "cancelar"
+              ]
+            },
+            "description": "R5: cancela la póliza y todos sus riesgos. Para repetir la colección: docker compose down -v && docker compose up -d."
+          },
+          "response": []
+        },
+        {
+          "name": "29. Cancelar poliza ya cancelada (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 409\", function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaColectivaId}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaColectivaId}}",
+                "cancelar"
+              ]
+            },
+            "description": "R6."
+          },
+          "response": []
+        },
+        {
+          "name": "30. Cancelar poliza inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/999999/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "999999",
+                "cancelar"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "31. Verificar riesgos cancelados (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Todos los riesgos CANCELADO\", function () { pm.response.json().forEach(function (r) { pm.expect(r.estado).to.eql(\"CANCELADO\"); }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/polizas/{{polizaColectivaId}}/riesgos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "polizas",
+                "{{polizaColectivaId}}",
+                "riesgos"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "apiKey",
+      "value": "123456"
+    },
+    {
+      "key": "polizaIndividualId",
+      "value": "1"
+    },
+    {
+      "key": "polizaColectivaId",
+      "value": "2"
+    },
+    {
+      "key": "polizaCanceladaId",
+      "value": "3"
+    },
+    {
+      "key": "riesgoNuevoId",
+      "value": ""
+    }
+  ]
+}

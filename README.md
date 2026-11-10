@@ -123,6 +123,57 @@ La colección completa, con un caso por endpoint y por cada error relevante, est
 en [`requests.http`](requests.http) y se puede ejecutar desde IntelliJ IDEA o con
 la extensión REST Client de VS Code.
 
+## Colección de Postman
+
+Para probar los endpoints uno a uno desde Postman, el repositorio incluye una colección lista para importar en `postman_collection/DemoTI_Polizas.postman_collection.json`.
+
+### Importar
+
+1. Abre Postman y elige **Import**.
+2. Selecciona el archivo `postman_collection/DemoTI_Polizas.postman_collection.json`.
+3. Con la API levantada (`docker compose up --build`), ejecuta las peticiones en orden, de arriba hacia abajo.
+
+### Contenido
+
+La colección tiene 31 peticiones numeradas y agrupadas en carpetas, en el orden en que conviene ejecutarlas:
+
+| Carpeta | Qué prueba |
+|---|---|
+| Auth (x-api-key) | Sin clave y con clave incorrecta devuelven 401; con la clave correcta pasa. Incluye el health check público. |
+| Consultas | Listado de pólizas con filtros `tipo` y `estado`, y riesgos de una póliza. |
+| Renovar póliza | IPC por defecto, IPC en el body, IPC fuera de rango, póliza cancelada e inexistente. |
+| Riesgos | Alta de riesgo (colectiva, individual, cancelada) y cancelación de riesgos. |
+| CORE mock | Evento válido e inválido hacia `/core-mock/evento`. |
+| Cancelar póliza (al final) | Cancelación de la póliza y de todos sus riesgos, y casos de error. |
+
+Todas las peticiones, salvo las de la carpeta Auth que prueban la ausencia o el error de la clave, envían el header `x-api-key: {{apiKey}}`.
+
+### Variables
+
+Se definen a nivel de colección y se pueden editar en la pestaña **Variables**:
+
+| Variable | Valor por defecto | Uso |
+|---|---|---|
+| `baseUrl` | `http://localhost:8080` | Dirección de la API |
+| `apiKey` | `123456` | Valor del header `x-api-key` |
+| `polizaIndividualId` | `1` | Póliza individual de los datos semilla |
+| `polizaColectivaId` | `2` | Póliza colectiva de los datos semilla |
+| `polizaCanceladaId` | `3` | Póliza colectiva ya cancelada de los datos semilla |
+| `riesgoNuevoId` | (vacía) | Se llena sola al agregar un riesgo y se usa al cancelarlo |
+
+### Tests automáticos
+
+Cada petición incluye un test que verifica el código HTTP esperado, y algunas comprueban además el cuerpo de la respuesta (por ejemplo, el estado `RENOVADA` o `CANCELADA`). Se pueden ejecutar todas juntas con el **Collection Runner** de Postman.
+
+### Repetir la prueba
+
+La carpeta final cancela la póliza colectiva y sus riesgos, por lo que una segunda corrida sobre los mismos datos devolvería resultados distintos. Para volver al estado inicial:
+
+```bash
+docker compose down -v
+docker compose up --build -d
+```
+
 ### 1. Listar pólizas
 
 Ambos filtros son opcionales y combinables.
