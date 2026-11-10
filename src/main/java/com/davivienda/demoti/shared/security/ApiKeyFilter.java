@@ -29,7 +29,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Slf4j
 public class ApiKeyFilter extends OncePerRequestFilter {
 
-	static final String HEADER_API_KEY = "x-api-key";
+	public static final String HEADER_API_KEY = "x-api-key";
 
 	/** Unica ruta sin API key: permite que un orquestador consulte el estado. */
 	private static final String RUTA_HEALTH = "/actuator/health";
