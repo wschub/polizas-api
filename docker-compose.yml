@@ -17,5 +17,17 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # Dentro de la red de Compose la BD es db:5432; el 5434 del host es solo
+      # para acceso externo (psql, un cliente grafico).
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/polizas
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
