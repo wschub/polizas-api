@@ -1,6 +1,7 @@
 package com.davivienda.demoti.poliza.service;
 
 import com.davivienda.demoti.core.CoreGateway;
+import com.davivienda.demoti.notificacion.PolizaRenovadaEvent;
 import com.davivienda.demoti.poliza.domain.EstadoPoliza;
 import com.davivienda.demoti.poliza.domain.Poliza;
 import com.davivienda.demoti.poliza.domain.TipoPoliza;
@@ -12,6 +13,7 @@ import com.davivienda.demoti.shared.exception.RecursoNoEncontradoException;
 import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,16 +34,19 @@ public class PolizaService {
 	private final PolizaRepository polizaRepository;
 	private final RiesgoRepository riesgoRepository;
 	private final CoreGateway coreGateway;
+	private final ApplicationEventPublisher publicadorDeEventos;
 	private final BigDecimal ipcPorDefecto;
 
 	public PolizaService(
 			PolizaRepository polizaRepository,
 			RiesgoRepository riesgoRepository,
 			CoreGateway coreGateway,
+			ApplicationEventPublisher publicadorDeEventos,
 			@Value("${polizas.ipc}") BigDecimal ipcPorDefecto) {
 		this.polizaRepository = polizaRepository;
 		this.riesgoRepository = riesgoRepository;
 		this.coreGateway = coreGateway;
+		this.publicadorDeEventos = publicadorDeEventos;
 		this.ipcPorDefecto = ipcPorDefecto;
 	}
 
@@ -74,13 +79,22 @@ public class PolizaService {
 	 *     {@code polizas.ipc}
 	 * @throws RecursoNoEncontradoException si la poliza no existe (404)
 	 * @throws com.davivienda.demoti.shared.exception.ReglaNegocioException si esta
-	 *     CANCELADA (409); en ese caso no se notifica al CORE
+	 *     CANCELADA (409); en ese caso no se notifica al CORE ni se publica el evento
 	 */
 	@Transactional
 	public PolizaResponse renovar(Long id, BigDecimal ipcOpcional) {
 		Poliza poliza = cargar(id);
 		poliza.renovar(ipcOpcional != null ? ipcOpcional : ipcPorDefecto);
-		return guardarYNotificar(poliza);
+		Poliza guardada = polizaRepository.save(poliza);
+
+		// El evento se publica aqui, pero su listener escucha en AFTER_COMMIT: si la
+		// transaccion no se confirma, al tomador no se le avisa de un cambio que no
+		// ocurrio. Si la regla de negocio hubiera fallado, la excepcion ya salio y no
+		// se publica nada.
+		publicadorDeEventos.publishEvent(PolizaRenovadaEvent.de(guardada));
+
+		coreGateway.notificarActualizacion(guardada.getId());
+		return PolizaResponse.de(guardada);
 	}
 
 	/**

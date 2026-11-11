@@ -85,7 +85,7 @@ reiniciar la aplicación no los duplica.
 ./scripts/test.sh
 ```
 
-Corre las 95 pruebas dentro de un contenedor con JDK 21. **Requiere Docker
+Corre las 104 pruebas dentro de un contenedor con JDK 21. **Requiere Docker
 encendido**: los tests de integración levantan un PostgreSQL real con
 Testcontainers.
 
@@ -294,6 +294,74 @@ docker compose logs app | grep "\[CORE-MOCK\]"
 
 ---
 
+## Notificaciones (simuladas)
+
+Cuando una póliza se renueva, al tomador se le avisaría por correo y SMS. Esa
+parte no está construida: lo que hay es el **mecanismo** que la disparará, con el
+envío simulado por una línea de log.
+
+`PolizaService.renovar`, después de guardar, publica un evento de dominio:
+
+```java
+publicadorDeEventos.publishEvent(PolizaRenovadaEvent.de(guardada));
+```
+
+`PolizaRenovadaEvent` es un `record` con los datos del cambio: id, número,
+tomador, canon mensual, prima y fecha de fin de vigencia. Lleva los valores
+**copiados** y no una referencia a la entidad, por dos razones: el consumidor
+corre cuando la sesión de persistencia ya se cerró, y un evento debe describir lo
+que pasó en el momento en que pasó, no el estado actual de la fila.
+
+`NotificacionListener` lo consume:
+
+```java
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void alRenovarPoliza(PolizaRenovadaEvent evento) { ... }
+```
+
+```bash
+docker compose logs app | grep "\[NOTIFICACION\]"
+# [NOTIFICACION] Se enviaría correo y SMS al tomador Ana Gomez por renovación
+# de la póliza POL-IND-001 (nuevo canon 1893600.00, vigente hasta 2028-01-01)
+```
+
+Tres decisiones que vale señalar:
+
+**La fase `AFTER_COMMIT` no es un detalle.** El listener solo corre si la
+transacción de la renovación se confirmó. Si la operación se deshiciera, no se
+avisaría al tomador de un cambio que nunca ocurrió, que es el error clásico de
+notificar dentro de la transacción.
+
+**Un fallo al notificar no afecta a la renovación.** El listener atrapa cualquier
+excepción y la registra con `log.error`. Y aunque no lo hiciera, Spring no
+propaga las excepciones de un listener `AFTER_COMMIT`: la petición sigue
+respondiendo 200 y la póliza queda `RENOVADA`. Hay una prueba que lo comprueba
+registrando un listener que falla a propósito.
+
+**Solo se publica en renovaciones exitosas.** Un 404, un 409 o un 400 lanzan antes
+de llegar a la publicación, así que no se emite ningún evento.
+
+### Por qué un evento y no una llamada directa
+
+`PolizaService` no conoce al listener: publica un hecho y se desentiende de quién
+lo escucha. Agregar un canal nuevo —una notificación al asesor, una métrica, una
+entrada de auditoría— es añadir un listener, sin tocar la lógica de renovación.
+
+### Evolución
+
+| Hoy | Siguiente paso |
+|---|---|
+| Evento en memoria, dentro del mismo proceso | **Outbox**: guardar el evento en la misma transacción que el cambio, y publicarlo después con reintentos. Sobrevive a una caída entre el commit y el envío. |
+| Listener sincrónico en el hilo de la petición | **Broker** (Kafka, RabbitMQ, SQS): el consumidor procesa a su ritmo y la API no espera. |
+| Línea de log | **Servicio de correo y SMS** detrás de su propio puerto de salida, igual que `CoreGateway`, con plantillas y control de reintentos. |
+
+El mismo mecanismo cubriría el resto del ciclo de vida: la creación de pólizas
+publicaría un `PolizaCreadaEvent` con su propio listener de bienvenida, y la
+cancelación un `PolizaCanceladaEvent`. Por eso el consumidor está en un paquete
+propio, `notificacion`, y no colgado del paquete `poliza`.
+
+---
+
 ## Reglas de negocio
 
 Viven en métodos de las entidades (`Poliza.renovar`, `Poliza.cancelar`,
@@ -343,6 +411,9 @@ com.davivienda.demoti
 │   ├── repository      PolizaRepository, RiesgoRepository
 │   ├── domain          Poliza, Riesgo, TipoPoliza, EstadoPoliza, EstadoRiesgo
 │   └── dto             PolizaResponse, RiesgoResponse, RenovarRequest, CrearRiesgoRequest
+├── notificacion
+│   ├── PolizaRenovadaEvent     evento de dominio
+│   └── NotificacionListener    consumidor, en AFTER_COMMIT
 ├── core
 │   ├── CoreGateway             puerto de salida
 │   ├── CoreGatewayHttp         adaptador HTTP
@@ -448,7 +519,7 @@ El enunciado no define estos puntos; se resolvieron así.
 
 ## Matriz de trazabilidad
 
-Las 31 filas de la matriz de casos tienen al menos una prueba. Los IDs aparecen en
+Las 34 filas de la matriz de casos tienen al menos una prueba. Los IDs aparecen en
 el `@DisplayName` de cada prueba, así que se pueden localizar con
 `grep -rn "CU3-c" src/test`.
 
@@ -485,6 +556,9 @@ el `@DisplayName` de cada prueba, así que se pueden localizar con
 | CU8-a | Mock del CORE con body válido → 202 | `CoreMockControllerIT` |
 | CU8-b | Mock del CORE con body inválido → 400 | `CoreMockControllerIT` |
 | CU8-c | Un fallo del CORE no se propaga | `CoreGatewayHttpTest` |
+| CU9-a | Renovar publica el evento y notifica al tomador | `PolizaServiceTest`, `NotificacionListenerIT` |
+| CU9-b | Una renovación fallida no notifica | `PolizaServiceTest`, `NotificacionListenerIT` |
+| CU9-c | Un fallo al notificar no afecta a la renovación | `NotificacionConFalloIT` |
 
 ### Niveles de prueba
 
@@ -493,7 +567,7 @@ el `@DisplayName` de cada prueba, así que se pueden localizar con
 | Dominio (JUnit puro) | `PolizaTest`, `RiesgoTest` | Reglas y cálculos, sin Spring ni base de datos |
 | Servicio (Mockito) | `PolizaServiceTest`, `RiesgoServiceTest` | Orquestación, 404, y que el CORE se invoque **solo** cuando la operación tiene éxito |
 | Unitaria | `CoreGatewayHttpTest` | Que un fallo del CORE no se propague y quede registrado |
-| Integración (Testcontainers) | `PolizaControllerIT`, `RiesgoControllerIT`, `CoreMockControllerIT`, `ApiKeyFilterIT` | Filtro → controlador → servicio → PostgreSQL real |
+| Integración (Testcontainers) | `PolizaControllerIT`, `RiesgoControllerIT`, `CoreMockControllerIT`, `ApiKeyFilterIT`, `NotificacionListenerIT`, `NotificacionConFalloIT` | Filtro → controlador → servicio → PostgreSQL real |
 
 Los tests de integración reemplazan `CoreGateway` por un mock, porque MockMvc no
 abre un puerto real y el adaptador HTTP no podría llamarse a sí mismo. Cada clase
@@ -507,7 +581,7 @@ Decisiones conscientes, no omisiones:
 
 | Qué | Por qué y cómo evolucionaría |
 |---|---|
-| **Outbox** | La notificación al CORE es *best effort* y un fallo pierde el evento. El outbox lo guardaría en la misma transacción que el cambio de estado y lo publicaría después con reintentos y garantía de entrega al menos una vez. |
+| **Outbox** | Tanto la notificación al CORE como el evento de renovación son *best effort*: un fallo pierde el aviso. El outbox los guardaría en la misma transacción que el cambio de estado y los publicaría después con reintentos y garantía de entrega al menos una vez. |
 | **Broker de mensajería** | Hoy la integración es HTTP sincrónico. Con un broker el CORE consumiría eventos a su ritmo y la API dejaría de depender de su disponibilidad. |
 | **JWT / OAuth2** | La API key es suficiente para una integración interna, pero no identifica a quien llama ni expira. La autenticación real corresponde al API Gateway, que validaría un JWT y propagaría la identidad. |
 | **Flyway / Liquibase** | `ddl-auto=update` sirve para una prueba, no para producción: no versiona el esquema ni permite revisar o revertir un cambio. Migraciones versionadas desde el primer despliegue. |

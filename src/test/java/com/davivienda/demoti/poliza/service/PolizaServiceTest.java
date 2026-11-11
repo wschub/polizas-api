@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.davivienda.demoti.core.CoreGateway;
+import com.davivienda.demoti.notificacion.PolizaRenovadaEvent;
 import com.davivienda.demoti.poliza.domain.EstadoPoliza;
 import com.davivienda.demoti.poliza.domain.EstadoRiesgo;
 import com.davivienda.demoti.poliza.domain.Poliza;
@@ -27,8 +28,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * Orquestacion de {@link PolizaService}: 404, y que el CORE se invoque solo
@@ -43,13 +47,21 @@ class PolizaServiceTest {
 	@Mock private PolizaRepository polizaRepository;
 	@Mock private RiesgoRepository riesgoRepository;
 	@Mock private CoreGateway coreGateway;
+	@Mock private ApplicationEventPublisher publicadorDeEventos;
+
+	@Captor private ArgumentCaptor<PolizaRenovadaEvent> eventoCapturado;
 
 	private PolizaService polizaService;
 
 	@BeforeEach
 	void prepararService() {
 		polizaService =
-				new PolizaService(polizaRepository, riesgoRepository, coreGateway, IPC_POR_DEFECTO);
+				new PolizaService(
+						polizaRepository,
+						riesgoRepository,
+						coreGateway,
+						publicadorDeEventos,
+						IPC_POR_DEFECTO);
 	}
 
 	/**
@@ -185,5 +197,63 @@ class PolizaServiceTest {
 				.isThrownBy(() -> polizaService.cancelar(POLIZA_ID));
 
 		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU9-a: renovar publica PolizaRenovadaEvent exactamente una vez con los datos renovados")
+	void publicaElEventoDeRenovacionUnaVez() {
+		Poliza poliza = polizaCon(POLIZA_ID, TipoPoliza.COLECTIVA, "1000.00");
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.of(poliza));
+		when(polizaRepository.save(poliza)).thenReturn(poliza);
+
+		polizaService.renovar(POLIZA_ID, null);
+
+		verify(publicadorDeEventos, times(1)).publishEvent(eventoCapturado.capture());
+		PolizaRenovadaEvent evento = eventoCapturado.getValue();
+
+		assertThat(evento.polizaId()).isEqualTo(POLIZA_ID);
+		assertThat(evento.numero()).isEqualTo("POL-001");
+		assertThat(evento.tomador()).isEqualTo("Inmobiliaria Andina SAS");
+		// los importes del evento son los de DESPUES de renovar: 1000.00 x 1.052
+		assertThat(evento.canonMensual()).isEqualByComparingTo("1052.00");
+		assertThat(evento.prima()).isEqualByComparingTo("12624.00");
+		// la vigencia tambien es la nueva
+		assertThat(evento.fechaFinVigencia()).isEqualTo(LocalDate.of(2028, 1, 1));
+	}
+
+	@Test
+	@DisplayName("CU9-b: renovar una poliza CANCELADA no publica ningun evento")
+	void noPublicaEventoSiLaPolizaEstaCancelada() {
+		Poliza poliza = polizaCon(POLIZA_ID, TipoPoliza.COLECTIVA, "1000.00");
+		poliza.cancelar();
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.of(poliza));
+
+		assertThatExceptionOfType(ReglaNegocioException.class)
+				.isThrownBy(() -> polizaService.renovar(POLIZA_ID, null));
+
+		verifyNoInteractions(publicadorDeEventos);
+	}
+
+	@Test
+	@DisplayName("CU9-b: renovar una poliza inexistente no publica ningun evento")
+	void noPublicaEventoSiLaPolizaNoExiste() {
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.empty());
+
+		assertThatExceptionOfType(RecursoNoEncontradoException.class)
+				.isThrownBy(() -> polizaService.renovar(POLIZA_ID, null));
+
+		verifyNoInteractions(publicadorDeEventos);
+	}
+
+	@Test
+	@DisplayName("CU9-b: cancelar una poliza no publica PolizaRenovadaEvent")
+	void cancelarNoPublicaEventoDeRenovacion() {
+		Poliza poliza = polizaCon(POLIZA_ID, TipoPoliza.COLECTIVA, "1000.00");
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.of(poliza));
+		when(polizaRepository.save(poliza)).thenReturn(poliza);
+
+		polizaService.cancelar(POLIZA_ID);
+
+		verifyNoInteractions(publicadorDeEventos);
 	}
 }
