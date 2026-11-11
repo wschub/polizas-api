@@ -133,6 +133,21 @@ Para probar los endpoints uno a uno desde Postman, el repositorio incluye una co
 2. Selecciona el archivo `postman_collection/DemoTI_Polizas.postman_collection.json`.
 3. Con la API levantada (`docker compose up --build`), ejecuta las peticiones en orden, de arriba hacia abajo.
 
+### Verificar notificaciones y CORE
+
+Postman solo muestra la respuesta HTTP, así que las notificaciones simuladas se comprueban en los logs de la aplicación. Cada petición POST indica en su descripción qué debe aparecer:
+
+```bash
+docker compose logs app | grep -E "NOTIFICACION|CORE-MOCK"
+```
+
+| Operación | `[NOTIFICACION]` | `[CORE-MOCK]` |
+|---|---|---|
+| Renovar póliza | Sí | Sí |
+| Agregar riesgo | Sí | Sí |
+| Cancelar póliza o riesgo | No | Sí |
+| Cualquier operación fallida (400, 404, 409) | No | No |
+
 ### Contenido
 
 La colección tiene 31 peticiones numeradas y agrupadas en carpetas, en el orden en que conviene ejecutarlas:

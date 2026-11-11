@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Demo TI - API de Gestion de Polizas",
-    "description": "Colección para probar los endpoints en orden. Ejecutar de arriba hacia abajo con datos semilla recién creados (docker compose down -v && docker compose up --build -d). Cada petición lleva su test de código HTTP.",
+    "description": "Colección para probar los endpoints en orden. Ejecutar de arriba hacia abajo con datos semilla recién creados (docker compose down -v && docker compose up --build -d). Cada petición lleva su test de código HTTP.\n\nNotificaciones y CORE: Postman solo ve la respuesta HTTP; las líneas [NOTIFICACION] y [CORE-MOCK] se comprueban en los logs de la app. Cada petición POST indica en su descripción qué logs deben aparecer. Para verlos: docker compose logs app | grep -E \"NOTIFICACION|CORE-MOCK\". Resumen: renovar y agregar riesgo -> [NOTIFICACION] + [CORE-MOCK]; cancelar póliza o riesgo -> solo [CORE-MOCK]; cualquier operación fallida -> ninguna.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -501,7 +501,7 @@
                 "renovar"
               ]
             },
-            "description": "Usa polizas.ipc=5.2. Estado pasa a RENOVADA; canon y prima suben; la vigencia se corre un periodo."
+            "description": "Usa polizas.ipc=5.2. Estado pasa a RENOVADA; canon y prima suben; la vigencia se corre un periodo.\n\nLogs esperados (docker compose logs app): una línea [NOTIFICACION] y una [CORE-MOCK] (el CORE se notifica siempre con el id de la póliza)."
           },
           "response": []
         },
@@ -543,7 +543,7 @@
                 "renovar"
               ]
             },
-            "description": "Sobrescribe el IPC por defecto. Renovar una póliza RENOVADA está permitido (R4).",
+            "description": "Sobrescribe el IPC por defecto. Renovar una póliza RENOVADA está permitido (R4).\n\nLogs esperados (docker compose logs app): una línea [NOTIFICACION] y una [CORE-MOCK] (el CORE se notifica siempre con el id de la póliza).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"ipc\": 10\n}",
@@ -594,7 +594,7 @@
                 "renovar"
               ]
             },
-            "description": "El IPC debe estar entre 0 y 100.",
+            "description": "El IPC debe estar entre 0 y 100.\n\nLogs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"ipc\": 150\n}",
@@ -640,7 +640,7 @@
                 "renovar"
               ]
             },
-            "description": "R3: no se puede renovar una póliza cancelada. No se notifica al CORE."
+            "description": "R3: no se puede renovar una póliza cancelada. No se notifica al CORE.\n\nLogs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE."
           },
           "response": []
         },
@@ -677,7 +677,7 @@
                 "renovar"
               ]
             },
-            "description": ""
+            "description": "Logs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE."
           },
           "response": []
         }
@@ -726,7 +726,7 @@
                 "riesgos"
               ]
             },
-            "description": "Guarda el id del riesgo creado en la variable riesgoNuevoId para el paso de cancelación.",
+            "description": "Guarda el id del riesgo creado en la variable riesgoNuevoId para el paso de cancelación.\n\nLogs esperados (docker compose logs app): una línea [NOTIFICACION] y una [CORE-MOCK] (el CORE se notifica siempre con el id de la póliza).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"direccionInmueble\": \"Carrera 43A # 1-50, Medellin\",\n  \"arrendatario\": \"Ana Gomez\",\n  \"arrendador\": \"Inmobiliaria Andina\"\n}",
@@ -777,7 +777,7 @@
                 "riesgos"
               ]
             },
-            "description": "R1: una póliza individual no admite riesgos adicionales.",
+            "description": "R1: una póliza individual no admite riesgos adicionales.\n\nLogs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"direccionInmueble\": \"Calle 10 # 5-20\",\n  \"arrendatario\": \"Luis Perez\",\n  \"arrendador\": \"Maria Ruiz\"\n}",
@@ -828,7 +828,7 @@
                 "riesgos"
               ]
             },
-            "description": "R2: no se agregan riesgos a una póliza cancelada.",
+            "description": "R2: no se agregan riesgos a una póliza cancelada.\n\nLogs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"direccionInmueble\": \"Calle 10 # 5-20\",\n  \"arrendatario\": \"Luis Perez\",\n  \"arrendador\": \"Maria Ruiz\"\n}",
@@ -879,7 +879,7 @@
                 "riesgos"
               ]
             },
-            "description": "Los tres campos son obligatorios.",
+            "description": "Los tres campos son obligatorios.\n\nLogs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE.",
             "body": {
               "mode": "raw",
               "raw": "{}",
@@ -930,7 +930,7 @@
                 "riesgos"
               ]
             },
-            "description": "",
+            "description": "Logs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"direccionInmueble\": \"Calle 10 # 5-20\",\n  \"arrendatario\": \"Luis Perez\",\n  \"arrendador\": \"Maria Ruiz\"\n}",
@@ -977,7 +977,7 @@
                 "cancelar"
               ]
             },
-            "description": "Cancela el riesgo del paso anterior. La póliza NO cambia de estado (R8)."
+            "description": "Cancela el riesgo del paso anterior. La póliza NO cambia de estado (R8).\n\nLogs esperados (docker compose logs app): una línea [CORE-MOCK] y NINGUNA [NOTIFICACION] (cancelar no notifica al tomador)."
           },
           "response": []
         },
@@ -1014,7 +1014,7 @@
                 "cancelar"
               ]
             },
-            "description": "R7."
+            "description": "R7.\n\nLogs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE."
           },
           "response": []
         },
@@ -1051,7 +1051,7 @@
                 "cancelar"
               ]
             },
-            "description": ""
+            "description": "Logs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE."
           },
           "response": []
         }
@@ -1099,7 +1099,7 @@
                 "evento"
               ]
             },
-            "description": "Revisa en los logs de la app la línea [CORE-MOCK].",
+            "description": "Revisa en los logs de la app la línea [CORE-MOCK].\n\nLogs esperados (docker compose logs app): una línea [CORE-MOCK]. No genera [NOTIFICACION].",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"evento\": \"ACTUALIZACION\",\n  \"polizaId\": 555\n}",
@@ -1149,7 +1149,7 @@
                 "evento"
               ]
             },
-            "description": "",
+            "description": "Logs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"evento\": \"\"\n}",
@@ -1202,7 +1202,7 @@
                 "cancelar"
               ]
             },
-            "description": "R5: cancela la póliza y todos sus riesgos. Para repetir la colección: docker compose down -v && docker compose up -d."
+            "description": "R5: cancela la póliza y todos sus riesgos. Para repetir la colección: docker compose down -v && docker compose up -d.\n\nLogs esperados (docker compose logs app): una línea [CORE-MOCK] y NINGUNA [NOTIFICACION] (cancelar no notifica al tomador)."
           },
           "response": []
         },
@@ -1239,7 +1239,7 @@
                 "cancelar"
               ]
             },
-            "description": "R6."
+            "description": "R6.\n\nLogs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE."
           },
           "response": []
         },
@@ -1276,7 +1276,7 @@
                 "cancelar"
               ]
             },
-            "description": ""
+            "description": "Logs esperados (docker compose logs app): ninguno. Una operación fallida no notifica al tomador ni al CORE."
           },
           "response": []
         },
