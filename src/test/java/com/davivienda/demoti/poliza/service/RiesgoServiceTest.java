@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.davivienda.demoti.core.CoreGateway;
+import com.davivienda.demoti.notificacion.RiesgoAgregadoEvent;
 import com.davivienda.demoti.poliza.domain.EstadoRiesgo;
 import com.davivienda.demoti.poliza.domain.Poliza;
 import com.davivienda.demoti.poliza.domain.Riesgo;
@@ -28,8 +29,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * Orquestacion de {@link RiesgoService}: 404, y que el CORE se invoque solo
@@ -47,12 +51,17 @@ class RiesgoServiceTest {
 	@Mock private PolizaRepository polizaRepository;
 	@Mock private RiesgoRepository riesgoRepository;
 	@Mock private CoreGateway coreGateway;
+	@Mock private ApplicationEventPublisher publicadorDeEventos;
+
+	@Captor private ArgumentCaptor<RiesgoAgregadoEvent> eventoCapturado;
 
 	private RiesgoService riesgoService;
 
 	@BeforeEach
 	void prepararService() {
-		riesgoService = new RiesgoService(polizaRepository, riesgoRepository, coreGateway);
+		riesgoService =
+				new RiesgoService(
+						polizaRepository, riesgoRepository, coreGateway, publicadorDeEventos);
 	}
 
 	/** Sin JPA nadie asigna los ids, y el service los usa para notificar al CORE. */
@@ -197,5 +206,81 @@ class RiesgoServiceTest {
 				.withMessageContaining(RIESGO_ID.toString());
 
 		verifyNoInteractions(coreGateway);
+	}
+
+	@Test
+	@DisplayName("CU9-d: agregar un riesgo publica RiesgoAgregadoEvent una vez con los datos correctos")
+	void publicaElEventoDeRiesgoAgregado() {
+		Poliza poliza = polizaCon(POLIZA_ID, TipoPoliza.COLECTIVA);
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.of(poliza));
+		when(riesgoRepository.save(any(Riesgo.class)))
+				.thenAnswer(
+						invocacion -> {
+							Riesgo guardado = invocacion.getArgument(0);
+							asignarId(guardado, RIESGO_ID);
+							return guardado;
+						});
+
+		riesgoService.agregar(POLIZA_ID, PETICION);
+
+		verify(publicadorDeEventos, times(1)).publishEvent(eventoCapturado.capture());
+		RiesgoAgregadoEvent evento = eventoCapturado.getValue();
+
+		assertThat(evento.polizaId()).isEqualTo(POLIZA_ID);
+		assertThat(evento.numeroPoliza()).isEqualTo("POL-001");
+		assertThat(evento.tomador()).isEqualTo("Inmobiliaria Andina SAS");
+		// el id del riesgo ya viene poblado en el evento
+		assertThat(evento.riesgoId()).isEqualTo(RIESGO_ID);
+		assertThat(evento.direccionInmueble()).isEqualTo("Calle 85 # 12-30");
+	}
+
+	@Test
+	@DisplayName("CU9-e: agregar a una poliza INDIVIDUAL no publica ningun evento")
+	void noPublicaEventoSiLaPolizaEsIndividual() {
+		Poliza poliza = polizaCon(POLIZA_ID, TipoPoliza.INDIVIDUAL);
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.of(poliza));
+
+		assertThatExceptionOfType(ReglaNegocioException.class)
+				.isThrownBy(() -> riesgoService.agregar(POLIZA_ID, PETICION));
+
+		verifyNoInteractions(publicadorDeEventos);
+	}
+
+	@Test
+	@DisplayName("CU9-e: agregar a una poliza CANCELADA no publica ningun evento")
+	void noPublicaEventoSiLaPolizaEstaCancelada() {
+		Poliza poliza = polizaCon(POLIZA_ID, TipoPoliza.COLECTIVA);
+		poliza.cancelar();
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.of(poliza));
+
+		assertThatExceptionOfType(ReglaNegocioException.class)
+				.isThrownBy(() -> riesgoService.agregar(POLIZA_ID, PETICION));
+
+		verifyNoInteractions(publicadorDeEventos);
+	}
+
+	@Test
+	@DisplayName("CU9-e: agregar a una poliza inexistente no publica ningun evento")
+	void noPublicaEventoSiLaPolizaNoExiste() {
+		when(polizaRepository.findById(POLIZA_ID)).thenReturn(Optional.empty());
+
+		assertThatExceptionOfType(RecursoNoEncontradoException.class)
+				.isThrownBy(() -> riesgoService.agregar(POLIZA_ID, PETICION));
+
+		verifyNoInteractions(publicadorDeEventos);
+	}
+
+	@Test
+	@DisplayName("CU9-e: cancelar un riesgo no publica ningun evento de notificacion")
+	void cancelarRiesgoNoPublicaEventos() {
+		Poliza poliza = polizaCon(POLIZA_ID, TipoPoliza.COLECTIVA);
+		Riesgo riesgo = poliza.getRiesgos().getFirst();
+		asignarId(riesgo, RIESGO_ID);
+		when(riesgoRepository.findByIdConPoliza(RIESGO_ID)).thenReturn(Optional.of(riesgo));
+		when(riesgoRepository.save(riesgo)).thenReturn(riesgo);
+
+		riesgoService.cancelar(RIESGO_ID);
+
+		verifyNoInteractions(publicadorDeEventos);
 	}
 }

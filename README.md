@@ -85,7 +85,7 @@ reiniciar la aplicación no los duplica.
 ./scripts/test.sh
 ```
 
-Corre las 104 pruebas dentro de un contenedor con JDK 21. **Requiere Docker
+Corre las 115 pruebas dentro de un contenedor con JDK 21. **Requiere Docker
 encendido**: los tests de integración levantan un PostgreSQL real con
 Testcontainers.
 
@@ -296,56 +296,77 @@ docker compose logs app | grep "\[CORE-MOCK\]"
 
 ## Notificaciones (simuladas)
 
-Cuando una póliza se renueva, al tomador se le avisaría por correo y SMS. Esa
-parte no está construida: lo que hay es el **mecanismo** que la disparará, con el
-envío simulado por una línea de log.
+Cuando algo relevante le pasa a su póliza, al tomador se le avisaría por correo y
+SMS. Esa parte no está construida: lo que hay es el **mecanismo** que la
+disparará, con el envío simulado por una línea de log.
 
-`PolizaService.renovar`, después de guardar, publica un evento de dominio:
+### Qué notifica y qué no
+
+| Operación | ¿Notifica? | Por qué |
+|---|---|---|
+| Renovar póliza | **Sí** | Cambian el canon, la prima y la vigencia: el tomador tiene que saber cuánto y hasta cuándo va a pagar. |
+| Agregar riesgo | **Sí** | Entra un inmueble nuevo a la cobertura, y conviene que quede constancia ante el tomador. |
+| Cancelar póliza | No | Hoy no se notifica. La cancelación nace de una decisión del propio tomador o del asesor, así que el aviso sería redundante; si el negocio pidiera una carta de terminación, se añade un `PolizaCanceladaEvent` y un listener, sin tocar el servicio. |
+| Cancelar riesgo | No | Mismo razonamiento: sale un inmueble de la cobertura por una decisión ya conocida, y la póliza sigue vigente (R8). |
+
+### Cómo funciona
+
+Los servicios, después de guardar, publican un evento de dominio:
 
 ```java
-publicadorDeEventos.publishEvent(PolizaRenovadaEvent.de(guardada));
+publicadorDeEventos.publishEvent(PolizaRenovadaEvent.de(guardada));        // renovar
+publicadorDeEventos.publishEvent(RiesgoAgregadoEvent.de(poliza, guardado)); // agregar riesgo
 ```
 
-`PolizaRenovadaEvent` es un `record` con los datos del cambio: id, número,
-tomador, canon mensual, prima y fecha de fin de vigencia. Lleva los valores
-**copiados** y no una referencia a la entidad, por dos razones: el consumidor
-corre cuando la sesión de persistencia ya se cerró, y un evento debe describir lo
-que pasó en el momento en que pasó, no el estado actual de la fila.
+Los eventos son `record` con los datos del cambio: `PolizaRenovadaEvent` lleva id,
+número, tomador, canon mensual, prima y fecha de fin de vigencia;
+`RiesgoAgregadoEvent` lleva id y número de la póliza, tomador, id del riesgo y
+dirección del inmueble. Ambos llevan los valores **copiados** y no una referencia
+a la entidad, por dos razones: el consumidor corre cuando la sesión de
+persistencia ya se cerró, y un evento debe describir lo que pasó en el momento en
+que pasó, no el estado actual de la fila.
 
-`NotificacionListener` lo consume:
+`NotificacionListener` los consume, un método por evento:
 
 ```java
 @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void alRenovarPoliza(PolizaRenovadaEvent evento) { ... }
+
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void alAgregarRiesgo(RiesgoAgregadoEvent evento) { ... }
 ```
 
 ```bash
 docker compose logs app | grep "\[NOTIFICACION\]"
 # [NOTIFICACION] Se enviaría correo y SMS al tomador Ana Gomez por renovación
 # de la póliza POL-IND-001 (nuevo canon 1893600.00, vigente hasta 2028-01-01)
+# [NOTIFICACION] Se enviaría correo y SMS al tomador Inmobiliaria Andina SAS por
+# la inclusión de un riesgo (Transversal 12 # 50-60, Cali) en la póliza POL-COL-001
 ```
 
 Tres decisiones que vale señalar:
 
 **La fase `AFTER_COMMIT` no es un detalle.** El listener solo corre si la
-transacción de la renovación se confirmó. Si la operación se deshiciera, no se
+transacción de la operación se confirmó. Si la operación se deshiciera, no se
 avisaría al tomador de un cambio que nunca ocurrió, que es el error clásico de
 notificar dentro de la transacción.
 
-**Un fallo al notificar no afecta a la renovación.** El listener atrapa cualquier
-excepción y la registra con `log.error`. Y aunque no lo hiciera, Spring no
-propaga las excepciones de un listener `AFTER_COMMIT`: la petición sigue
-respondiendo 200 y la póliza queda `RENOVADA`. Hay una prueba que lo comprueba
-registrando un listener que falla a propósito.
+**Un fallo al notificar no afecta a la operación.** El envío va envuelto en un
+`try/catch` que registra el fallo con `log.error`. Y aunque no lo hiciera, Spring
+no propaga las excepciones de un listener `AFTER_COMMIT`: la petición sigue
+respondiendo igual y el cambio queda confirmado. Hay una prueba que lo comprueba
+registrando un listener que falla a propósito, sin red de seguridad.
 
-**Solo se publica en renovaciones exitosas.** Un 404, un 409 o un 400 lanzan antes
+**Solo se publica en operaciones exitosas.** Un 404, un 409 o un 400 lanzan antes
 de llegar a la publicación, así que no se emite ningún evento.
 
 ### Por qué un evento y no una llamada directa
 
-`PolizaService` no conoce al listener: publica un hecho y se desentiende de quién
-lo escucha. Agregar un canal nuevo —una notificación al asesor, una métrica, una
-entrada de auditoría— es añadir un listener, sin tocar la lógica de renovación.
+Los servicios no conocen al listener: publican un hecho y se desentienden de
+quién lo escucha. Agregar un canal nuevo —una notificación al asesor, una
+métrica, una entrada de auditoría— es añadir un listener, sin tocar la lógica de
+negocio. Y notificar una operación más es publicar un evento más, como muestra el
+alta de riesgos.
 
 ### Evolución
 
@@ -355,10 +376,11 @@ entrada de auditoría— es añadir un listener, sin tocar la lógica de renovac
 | Listener sincrónico en el hilo de la petición | **Broker** (Kafka, RabbitMQ, SQS): el consumidor procesa a su ritmo y la API no espera. |
 | Línea de log | **Servicio de correo y SMS** detrás de su propio puerto de salida, igual que `CoreGateway`, con plantillas y control de reintentos. |
 
-El mismo mecanismo cubriría el resto del ciclo de vida: la creación de pólizas
+El mismo mecanismo cubre el resto del ciclo de vida: la creación de pólizas
 publicaría un `PolizaCreadaEvent` con su propio listener de bienvenida, y la
-cancelación un `PolizaCanceladaEvent`. Por eso el consumidor está en un paquete
-propio, `notificacion`, y no colgado del paquete `poliza`.
+cancelación un `PolizaCanceladaEvent` si el negocio pidiera una carta de
+terminación. Por eso el consumidor está en un paquete propio, `notificacion`, y
+no colgado del paquete `poliza`.
 
 ---
 
@@ -413,6 +435,7 @@ com.davivienda.demoti
 │   └── dto             PolizaResponse, RiesgoResponse, RenovarRequest, CrearRiesgoRequest
 ├── notificacion
 │   ├── PolizaRenovadaEvent     evento de dominio
+│   ├── RiesgoAgregadoEvent     evento de dominio
 │   └── NotificacionListener    consumidor, en AFTER_COMMIT
 ├── core
 │   ├── CoreGateway             puerto de salida
@@ -519,7 +542,7 @@ El enunciado no define estos puntos; se resolvieron así.
 
 ## Matriz de trazabilidad
 
-Las 34 filas de la matriz de casos tienen al menos una prueba. Los IDs aparecen en
+Las 36 filas de la matriz de casos tienen al menos una prueba. Los IDs aparecen en
 el `@DisplayName` de cada prueba, así que se pueden localizar con
 `grep -rn "CU3-c" src/test`.
 
@@ -559,6 +582,8 @@ el `@DisplayName` de cada prueba, así que se pueden localizar con
 | CU9-a | Renovar publica el evento y notifica al tomador | `PolizaServiceTest`, `NotificacionListenerIT` |
 | CU9-b | Una renovación fallida no notifica | `PolizaServiceTest`, `NotificacionListenerIT` |
 | CU9-c | Un fallo al notificar no afecta a la renovación | `NotificacionConFalloIT` |
+| CU9-d | Agregar un riesgo publica el evento y notifica al tomador | `RiesgoServiceTest`, `NotificacionListenerIT` |
+| CU9-e | Un alta fallida, y las cancelaciones, no notifican | `RiesgoServiceTest`, `NotificacionListenerIT` |
 
 ### Niveles de prueba
 

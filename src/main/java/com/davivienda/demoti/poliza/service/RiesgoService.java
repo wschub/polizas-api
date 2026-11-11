@@ -1,6 +1,7 @@
 package com.davivienda.demoti.poliza.service;
 
 import com.davivienda.demoti.core.CoreGateway;
+import com.davivienda.demoti.notificacion.RiesgoAgregadoEvent;
 import com.davivienda.demoti.poliza.domain.Poliza;
 import com.davivienda.demoti.poliza.domain.Riesgo;
 import com.davivienda.demoti.poliza.dto.CrearRiesgoRequest;
@@ -8,6 +9,7 @@ import com.davivienda.demoti.poliza.dto.RiesgoResponse;
 import com.davivienda.demoti.poliza.repository.PolizaRepository;
 import com.davivienda.demoti.poliza.repository.RiesgoRepository;
 import com.davivienda.demoti.shared.exception.RecursoNoEncontradoException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,14 +27,17 @@ public class RiesgoService {
 	private final PolizaRepository polizaRepository;
 	private final RiesgoRepository riesgoRepository;
 	private final CoreGateway coreGateway;
+	private final ApplicationEventPublisher publicadorDeEventos;
 
 	public RiesgoService(
 			PolizaRepository polizaRepository,
 			RiesgoRepository riesgoRepository,
-			CoreGateway coreGateway) {
+			CoreGateway coreGateway,
+			ApplicationEventPublisher publicadorDeEventos) {
 		this.polizaRepository = polizaRepository;
 		this.riesgoRepository = riesgoRepository;
 		this.coreGateway = coreGateway;
+		this.publicadorDeEventos = publicadorDeEventos;
 	}
 
 	/**
@@ -41,7 +46,7 @@ public class RiesgoService {
 	 * @throws RecursoNoEncontradoException si la poliza no existe (404)
 	 * @throws com.davivienda.demoti.shared.exception.ReglaNegocioException si la
 	 *     poliza esta CANCELADA o no es COLECTIVA (409); en ese caso no se notifica
-	 *     al CORE
+	 *     al CORE ni se publica el evento
 	 */
 	@Transactional
 	public RiesgoResponse agregar(Long polizaId, CrearRiesgoRequest peticion) {
@@ -60,6 +65,11 @@ public class RiesgoService {
 		// la respuesta saldria con id null. Al persistir esta instancia, y siendo la
 		// estrategia IDENTITY, el INSERT se ejecuta de inmediato y el id queda aqui.
 		Riesgo guardado = riesgoRepository.save(nuevo);
+
+		// Igual que en la renovacion: el listener escucha en AFTER_COMMIT, asi que al
+		// tomador solo se le avisa si la transaccion se confirma. Si la regla de
+		// negocio hubiera fallado, la excepcion ya salio y no se publica nada.
+		publicadorDeEventos.publishEvent(RiesgoAgregadoEvent.de(poliza, guardado));
 
 		RiesgoResponse respuesta = RiesgoResponse.de(guardado);
 		coreGateway.notificarActualizacion(poliza.getId());
