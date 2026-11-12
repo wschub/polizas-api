@@ -627,3 +627,13 @@ Decisiones conscientes, no omisiones:
 | **Flyway / Liquibase** | `ddl-auto=update` sirve para una prueba, no para producción: no versiona el esquema ni permite revisar o revertir un cambio. Migraciones versionadas desde el primer despliegue. |
 | **Paginación** | `GET /polizas` devuelve la lista completa. Con volumen real haría falta paginación y ordenación por parámetro. |
 | **Mappers (MapStruct)** | El mapeo entidad → DTO se hace a mano en métodos de fábrica de los `record`. Con más DTOs, un mapper generado evitaría el código repetitivo. |
+
+---
+
+## Uso de IA
+
+Este proyecto se desarrolló con apoyo de Claude (asistente de IA de Anthropic) y de un agente de código, para planificar, generar código y escribir pruebas.
+
+Las decisiones de arquitectura, la estructura del proyecto, el alcance, las reglas de negocio y la matriz que relaciona cada caso de uso con sus pruebas son mías. Revisé y validé cada fase, y ejecuté las pruebas antes de aceptar el resultado.
+
+Suelo trabajar con Spec-Driven Development (por ejemplo con spec-kit), pero en esta prueba no lo usé: sus pasos previos (constitution, specify, plan y tasks) habrían sido desproporcionados para el tamaño del ejercicio. En su lugar trabajé con instrucciones por fases y con la matriz de casos de uso a pruebas, antes de implementar y medir la cobertura.
