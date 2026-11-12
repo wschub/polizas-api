@@ -60,6 +60,8 @@ Para inspeccionar la base:
 docker compose exec db psql -U polizas -d polizas -c "select id, numero, tipo, estado from poliza order by id;"
 ```
 
+El esquema de la base de datos está en [`docs/schema.sql`](docs/schema.sql), solo de consulta; las tablas las crea la aplicación con Hibernate.
+
 Para volver al estado inicial (borra el volumen y recarga los datos de ejemplo):
 
 ```bash
